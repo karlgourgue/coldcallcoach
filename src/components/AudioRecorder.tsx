@@ -26,18 +26,13 @@ export function AudioUploader() {
       const formData = new FormData();
       formData.append('audio', file);
       
-      console.log('Making request to:', `${import.meta.env.VITE_API_URL}/api/analyze`);
-      
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/analyze`, {
+      const response = await fetch('/api/analyze', {
         method: 'POST',
         body: formData
       });
 
-      console.log('Response status:', response.status);
-      const responseText = await response.text();
-      console.log('Response text:', responseText);
-
       if (!response.ok) {
+        const responseText = await response.text();
         throw new Error(`Failed to analyze audio: ${response.status} ${responseText}`);
       }
 
