@@ -19,7 +19,7 @@ if (!process.env.OPENAI_API_KEY) {
 const app = express();
 const upload = multer({ 
   storage: multer.memoryStorage(),
-  fileFilter: (req, file, cb) => {
+  fileFilter: (_req, file, cb) => {
     if (!file.mimetype.startsWith('audio/')) {
       cb(new Error('Only audio files are allowed'));
       return;

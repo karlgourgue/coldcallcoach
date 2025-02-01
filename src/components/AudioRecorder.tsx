@@ -1,26 +1,30 @@
-import { useState } from 'react';
 import { useToast } from './ui/use-toast';
 
 console.log('API URL:', import.meta.env.VITE_API_URL);
 
-export function AudioRecorder() {
-  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
-  const [isRecording, setIsRecording] = useState(false);
+export function AudioUploader() {
   const { toast } = useToast();
 
-  const handleUpload = async () => {
-    if (!audioBlob) {
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.includes('audio/')) {
       toast({
         title: 'Error',
-        description: 'No audio recording to upload',
+        description: 'Please upload an audio file (.wav, .mp3, etc.)',
         variant: 'destructive',
       });
       return;
     }
 
+    await handleUpload(file);
+  };
+
+  const handleUpload = async (file: File) => {
     try {
       const formData = new FormData();
-      formData.append('audio', audioBlob);
+      formData.append('audio', file);
       
       console.log('Making request to:', `${import.meta.env.VITE_API_URL}/api/analyze`);
       
@@ -37,7 +41,6 @@ export function AudioRecorder() {
         throw new Error(`Failed to analyze audio: ${response.status} ${responseText}`);
       }
 
-      // Handle successful response
       toast({
         title: 'Success',
         description: 'Audio analyzed successfully',
@@ -54,7 +57,11 @@ export function AudioRecorder() {
 
   return (
     <div>
-      {/* Add your recording UI here */}
+      <input
+        type="file"
+        accept="audio/*"
+        onChange={handleFileChange}
+      />
     </div>
   );
 } 
