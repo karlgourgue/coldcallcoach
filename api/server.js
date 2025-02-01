@@ -1,4 +1,7 @@
 // Add CORS middleware configuration
+app.use(cors());  // This will allow all origins for now
+
+// Add CORS middleware configuration
 app.use(cors({
   origin: [
     'https://coach.karlgourgue.com'
