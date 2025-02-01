@@ -1,13 +1,11 @@
 import OpenAI from 'openai';
 import { type ChatCompletionMessageParam } from 'openai/resources/chat/completions';
-import env from '../config/env';
-import { extractSection, parseSectionFeedback } from '../utils/feedbackParser';
 
 // Debug logging (will only show first few characters for security)
 console.log('Initializing OpenAI client with key:', process.env.OPENAI_API_KEY?.slice(0, 10) + '...');
 
 const openai = new OpenAI({
-  apiKey: env.OPENAI_API_KEY
+  apiKey: process.env.OPENAI_API_KEY,
 });
 
 // Verify the API key is set
@@ -49,6 +47,27 @@ interface FeedbackResult {
     improvements: string[];
     scriptExample: string;
   };
+}
+
+function parseScore(text: string): number {
+  // Look for a line that starts with "SCORE:" followed by a number
+  const scoreMatch = text.match(/^SCORE:\s*(\d+(?:\.\d+)?)/m);
+  return scoreMatch ? parseFloat(scoreMatch[1]) : 0;
+}
+
+function parseSectionContent(text: string): string[] {
+  return text
+    .split(/\n+/)
+    .map(line => line.trim())
+    // Filter out score lines and section headers
+    .filter(line => line && 
+      !line.match(/^SCORE:/i) &&
+      !line.match(/^\d+\.\s+(?:Overall Score|Opener Analysis|Problem Proposition|Objection Handling|Engagement & Flow|Closing & Next Steps|Actionable Takeaways)/i)
+    )
+    // Remove bullet points and trim
+    .map(line => line.replace(/^[•\-\*]\s*/, '').trim())
+    // Filter out empty lines after processing
+    .filter(line => line);
 }
 
 export async function analyzeAudio(audioFile: File) {
@@ -143,52 +162,62 @@ Format your response with clear section headings and bullet points for easy pars
     
     console.log('Analysis complete. Raw response:', analysis);
 
-    const feedbackText = analysis;
+    // Split the analysis into sections
+    const sections = analysis.split(/\n(?=\d+\.\s+(?:Overall|Opener|Problem|Objection|Engagement|Closing|Actionable))/);
     
-    // Parse each section using the utility functions
-    const overallSection = extractSection(feedbackText, '1. Overall Score', '2.');
-    const openerSection = extractSection(feedbackText, '2. Opener Analysis', '3.');
-    const propositionSection = extractSection(feedbackText, '3. Problem Proposition', '4.');
-    const objectionSection = extractSection(feedbackText, '4. Objection Handling', '5.');
-    const engagementSection = extractSection(feedbackText, '5. Engagement & Flow', '6.');
-    const closingSection = extractSection(feedbackText, '6. Closing & Next Steps', '7.');
-    const takeawaysSection = extractSection(feedbackText, '7. Actionable Takeaways');
-
-    const result: FeedbackResult = {
-      overallScore: {
-        ...parseSectionFeedback(overallSection, false),
-        summary: overallSection
-      },
-      openerAnalysis: {
-        ...parseSectionFeedback(openerSection),
-        alternativeOpener: parseSectionFeedback(openerSection).alternative
-      },
-      problemProposition: {
-        ...parseSectionFeedback(propositionSection),
-        alternativeProposition: parseSectionFeedback(propositionSection).alternative
-      },
-      objectionHandling: {
-        ...parseSectionFeedback(objectionSection),
-        alternativeFramework: parseSectionFeedback(objectionSection).alternative
-      },
-      engagementAndFlow: {
-        ...parseSectionFeedback(engagementSection),
-        recommendations: parseSectionFeedback(engagementSection).feedback
-      },
-      closingAndNextSteps: {
-        ...parseSectionFeedback(closingSection),
-        alternativeClosing: parseSectionFeedback(closingSection).alternative
-      },
-      actionableTakeaways: {
-        improvements: parseSectionFeedback(takeawaysSection, false).feedback,
-        scriptExample: extractSection(takeawaysSection, 'Example Script:')
-      }
+    const feedback: FeedbackResult = {
+      overallScore: { score: 0, summary: '' },
+      openerAnalysis: { score: 0, feedback: [] },
+      problemProposition: { score: 0, feedback: [] },
+      objectionHandling: { score: 0, feedback: [] },
+      engagementAndFlow: { score: 0, feedback: [], recommendations: [] },
+      closingAndNextSteps: { score: 0, feedback: [] },
+      actionableTakeaways: { improvements: [], scriptExample: '' }
     };
 
+    sections.forEach(section => {
+      const trimmedSection = section.trim();
+      if (trimmedSection.match(/Overall Score/i)) {
+        const lines = parseSectionContent(trimmedSection);
+        feedback.overallScore.score = parseScore(trimmedSection);
+        feedback.overallScore.summary = lines.join(' ');
+      } else if (trimmedSection.match(/Opener Analysis/i)) {
+        feedback.openerAnalysis.score = parseScore(trimmedSection);
+        feedback.openerAnalysis.feedback = parseSectionContent(trimmedSection);
+        const altOpener = trimmedSection.match(/Suggest(?:ed)? (?:a )?stronger alternative opener:?\s*([^\n]+)/i);
+        if (altOpener) feedback.openerAnalysis.alternativeOpener = altOpener[1];
+      } else if (trimmedSection.match(/Problem Proposition/i)) {
+        feedback.problemProposition.score = parseScore(trimmedSection);
+        feedback.problemProposition.feedback = parseSectionContent(trimmedSection);
+        const altProp = trimmedSection.match(/(?:Provide|Suggest)(?:ed)? (?:a )?more effective (?:problem )?proposition:?\s*([^\n]+)/i);
+        if (altProp) feedback.problemProposition.alternativeProposition = altProp[1];
+      } else if (trimmedSection.match(/Objection Handling/i)) {
+        feedback.objectionHandling.score = parseScore(trimmedSection);
+        feedback.objectionHandling.feedback = parseSectionContent(trimmedSection);
+        const altFrame = trimmedSection.match(/Suggest(?:ed)? (?:a )?better response framework:?\s*([^\n]+)/i);
+        if (altFrame) feedback.objectionHandling.alternativeFramework = altFrame[1];
+      } else if (trimmedSection.match(/Engagement & Flow/i)) {
+        feedback.engagementAndFlow.score = parseScore(trimmedSection);
+        const content = parseSectionContent(trimmedSection);
+        feedback.engagementAndFlow.feedback = content.filter(item => !item.startsWith('Recommend'));
+        feedback.engagementAndFlow.recommendations = content.filter(item => item.startsWith('Recommend')).map(item => item.replace(/^Recommend:?\s*/, ''));
+      } else if (trimmedSection.match(/Closing & Next Steps/i)) {
+        feedback.closingAndNextSteps.score = parseScore(trimmedSection);
+        feedback.closingAndNextSteps.feedback = parseSectionContent(trimmedSection);
+        const altClose = trimmedSection.match(/Suggest(?:ed)? (?:a )?stronger closing:?\s*([^\n]+)/i);
+        if (altClose) feedback.closingAndNextSteps.alternativeClosing = altClose[1];
+      } else if (trimmedSection.match(/Actionable Takeaways/i)) {
+        const content = parseSectionContent(trimmedSection);
+        feedback.actionableTakeaways.improvements = content.filter(item => !item.includes('script'));
+        const scriptExample = content.find(item => item.includes('script'));
+        if (scriptExample) feedback.actionableTakeaways.scriptExample = scriptExample;
+      }
+    });
+
     console.log('Feedback parsed successfully');
-    return result;
+    return feedback;
   } catch (error) {
-    console.error('Error analyzing audio:', error);
+    console.error('Error in analyzeAudio:', error);
     throw error;
   }
 } 

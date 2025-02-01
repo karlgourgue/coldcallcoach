@@ -1,9 +1,8 @@
-import './config/env';  // This import validates env vars
-import express from 'express';
-import serverless from 'serverless-http';
-import apiRouter from './api';
-import { corsMiddleware } from './config/cors';
-import { errorHandler } from './api/middleware/errorHandler';
+import 'dotenv/config';
+import express, { Request, Response } from 'express';
+import multer from 'multer';
+import cors from 'cors';
+import { analyzeAudio } from './api/analyze';
 
 // Debug logging (will only show first few characters for security)
 console.log('API Key loaded:', process.env.OPENAI_API_KEY?.slice(0, 10) + '...');
@@ -17,16 +16,81 @@ if (!process.env.OPENAI_API_KEY) {
 }
 
 const app = express();
+const upload = multer({ 
+  storage: multer.memoryStorage(),
+  fileFilter: (req, file, cb) => {
+    if (!file.mimetype.startsWith('audio/')) {
+      cb(new Error('Only audio files are allowed'));
+      return;
+    }
+    cb(null, true);
+  },
+  limits: {
+    fileSize: 25 * 1024 * 1024, // 25MB max file size
+  }
+});
 
-// Middleware
-app.use(corsMiddleware);
+app.use(cors());
 app.use(express.json());
 
-// Mount API routes
-app.use('/api', apiRouter);
+interface MulterRequest extends Request {
+  file?: Express.Multer.File;
+}
 
-// Global error handler
-app.use(errorHandler);
+app.post('/api/analyze', upload.single('audio'), async (req: MulterRequest, res: Response): Promise<void> => {
+  try {
+    console.log('Received request to analyze audio');
+    
+    if (!req.file) {
+      console.error('No file provided in request');
+      res.status(400).json({ error: 'No audio file provided' });
+      return;
+    }
 
-// Export the serverless handler
-export default serverless(app); 
+    console.log('File details:', {
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size
+    });
+
+    // Create a File object from the buffer
+    const blob = new Blob([req.file.buffer], { type: req.file.mimetype });
+    const audioFile = new File([blob], req.file.originalname, {
+      type: req.file.mimetype,
+    });
+
+    console.log('Starting audio analysis...');
+    const feedback = await analyzeAudio(audioFile);
+    console.log('Analysis complete');
+    
+    res.json(feedback);
+  } catch (error) {
+    console.error('Error processing audio:', error);
+    if (error instanceof Error) {
+      res.status(500).json({ error: error.message });
+    } else {
+      res.status(500).json({ error: 'Failed to analyze audio' });
+    }
+  }
+});
+
+// Error handling middleware for multer errors
+app.use((err: any, req: Request, res: Response, next: express.NextFunction) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ error: 'File is too large. Maximum size is 25MB.' });
+    }
+    return res.status(400).json({ error: err.message });
+  }
+  
+  if (err.message === 'Only audio files are allowed') {
+    return res.status(400).json({ error: err.message });
+  }
+  
+  next(err);
+});
+
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+}); 
