@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express, { Request, Response } from 'express';
 import multer from 'multer';
 import cors from 'cors';
+import serverless from 'serverless-http';
 import { analyzeAudio } from './api/analyze';
 
 // Debug logging (will only show first few characters for security)
@@ -90,7 +91,5 @@ app.use((err: any, req: Request, res: Response, next: express.NextFunction) => {
   next(err);
 });
 
-const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-}); 
+// Wrap the Express app with serverless-http and export the handler
+export default serverless(app); 
