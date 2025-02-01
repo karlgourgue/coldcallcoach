@@ -1,5 +1,4 @@
 import OpenAI from 'openai';
-import { type ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 import env from '../../src/config/env';
 import { extractSection, parseSectionFeedback } from '../../src/utils/feedbackParser';
 
@@ -43,11 +42,34 @@ interface FeedbackResult {
   };
 }
 
-export async function analyzeAudio(audioFile: File) {
+export async function analyzeAudio(audioFile: File): Promise<FeedbackResult> {
   try {
-    // ... transcription logic ...
+    // First, transcribe the audio using OpenAI's API
+    const formData = new FormData();
+    formData.append('file', audioFile);
+    formData.append('model', 'whisper-1');
 
-    const feedbackText = ''; // Your feedback text from OpenAI
+    const transcription = await openai.audio.transcriptions.create({
+      file: audioFile,
+      model: 'whisper-1',
+    });
+
+    // Now analyze the transcription using GPT-4
+    const analysis = await openai.chat.completions.create({
+      model: 'gpt-4',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are an expert sales coach analyzing a cold call. Provide detailed feedback in the following format:\n\n1. Overall Score (0-100)\n2. Opener Analysis\n3. Problem Proposition\n4. Objection Handling\n5. Engagement & Flow\n6. Closing & Next Steps\n7. Actionable Takeaways'
+        },
+        {
+          role: 'user',
+          content: transcription.text
+        }
+      ]
+    });
+
+    const feedbackText = analysis.choices[0]?.message?.content || '';
     
     // Parse each section using the utility functions
     const overallSection = extractSection(feedbackText, '1. Overall Score', '2.');
