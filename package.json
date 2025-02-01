@@ -3,12 +3,16 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "dev": "vite",
     "dev:frontend": "vite",
     "dev:backend": "tsx watch api/server.ts",
     "build": "tsc --project tsconfig.json && vite build",
     "vercel-build": "tsc --project tsconfig.json && vite build",
+    "start": "tsx api/server.ts",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "prepare": "simple-git-hooks"
@@ -46,10 +50,9 @@
     "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.20",
     "concurrently": "^8.2.2",
-    "eslint": "^8.56.0",
+    "eslint": "^9.19.0",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.5",
-    "husky": "^9.1.7",
     "lint-staged": "^15.4.3",
     "postcss": "^8.5.1",
     "postcss-cli": "^11.0.0",
